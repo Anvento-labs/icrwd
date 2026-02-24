@@ -73,13 +73,13 @@ export default function App() {
           <main className={styles.main}>
             <div className={styles.hero}>
               <p className={styles.eyebrow}>WELCOME BACK // {user?.signInDetails?.loginId}</p>
-              <h1 className={styles.headline}>
+              {/* <h1 className={styles.headline}>
                 Stop Wasting Time.<br />
                 <span className={styles.accent}>Deploy Your Tasks.</span>
               </h1>
               <p className={styles.sub}>
                 The only productivity platform that activates your focus on demand.
-              </p>
+              </p> */}
             </div>
 
             <div className={styles.inputWrapper}>
@@ -124,14 +124,14 @@ export default function App() {
             )}
 
             <div className={styles.liveCards}>
-              <div className={styles.liveCard}>
+              {/* <div className={styles.liveCard}>
                 <span className={styles.liveLabel}>Latest activation</span>
                 <span className={styles.liveActivity}><strong className={styles.accentText}>Arrow G.</strong> in Scottsdale just deployed [focus sprint]</span>
               </div>
               <div className={styles.liveCard}>
                 <span className={styles.liveLabel}>Active CRWD right now:</span>
                 <span className={styles.liveCount}>14,198 Humans</span>
-              </div>
+              </div> */}
             </div>
           </main>
         </div>
