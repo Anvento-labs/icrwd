@@ -1,5 +1,3 @@
-/* CRWD Dark Theme - Todo App */
-
 .page {
   min-height: 100vh;
   width: 100%;
@@ -15,7 +13,6 @@
   flex-direction: column;
 }
 
-/* Ambient dots */
 .dot {
   position: fixed;
   width: 6px;
@@ -52,7 +49,6 @@
   }
 }
 
-/* NAV */
 .nav {
   display: flex;
   align-items: center;
@@ -116,7 +112,6 @@
   box-shadow: 0 4px 20px rgba(255, 200, 0, 0.3);
 }
 
-/* MAIN */
 .main {
   flex: 1;
   display: flex;
@@ -129,7 +124,6 @@
   gap: 32px;
 }
 
-/* HERO */
 .hero {
   text-align: center;
   display: flex;
@@ -171,7 +165,6 @@
   margin: 0;
 }
 
-/* INPUT */
 .inputWrapper {
   width: 100%;
   display: flex;
@@ -220,7 +213,6 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
-/* ACTIONS */
 .actions {
   display: flex;
   gap: 16px;
@@ -266,7 +258,6 @@
   background: rgba(255, 255, 255, 0.04);
 }
 
-/* TODO LIST */
 .todoSection {
   width: 100%;
   display: flex;
@@ -353,7 +344,6 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* LIVE CARDS */
 .liveCards {
   display: flex;
   gap: 12px;
@@ -398,7 +388,6 @@
   letter-spacing: 0.02em;
 }
 
-/* RESPONSIVE */
 @media (max-width: 600px) {
   .nav {
     padding: 16px 20px;

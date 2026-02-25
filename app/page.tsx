@@ -61,12 +61,12 @@ export default function App() {
               </svg>
               <span>CRWD</span>
             </div>
-            <div className={styles.navLinks}>
+            {/* <div className={styles.navLinks}>
               <a href="#" className={styles.navActive}>Home</a>
               <a href="#">For Brands</a>
               <a href="#">Join CRWD</a>
               <a href="#">Live Feed</a>
-            </div>
+            </div> */}
             <button className={styles.bookBtn} onClick={signOut}>Sign Out</button>
           </nav>
 
@@ -82,7 +82,7 @@ export default function App() {
               </p> */}
             </div>
 
-            <div className={styles.inputWrapper}>
+            {/* <div className={styles.inputWrapper}>
               <input
                 className={styles.input}
                 type="text"
@@ -94,16 +94,16 @@ export default function App() {
               <p className={styles.hint}>
                 Press <kbd className={styles.kbd}>Enter</kbd> to deploy your task
               </p>
-            </div>
+            </div> */}
 
-            <div className={styles.actions}>
+            {/* <div className={styles.actions}>
               <button className={styles.primaryBtn} onClick={createTodo}>
                 DEPLOY ACTIVATION ⚡
               </button>
               <button className={styles.secondaryBtn}>
                 WATCH LIVE FEED
               </button>
-            </div>
+            </div> */}
 
             {todos.length > 0 && (
               <div className={styles.todoSection}>
