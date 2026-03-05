@@ -1,0 +1,12 @@
+{
+  "availability-zones:account=411807801668:region=us-east-1": [
+    "us-east-1a",
+    "us-east-1b",
+    "us-east-1c",
+    "us-east-1d",
+    "us-east-1e",
+    "us-east-1f"
+  ],
+  "ami:account=411807801668:filters.image-type.0=machine:filters.name.0=*Chatwoot*:filters.state.0=available:owners.0=aws-marketplace:region=us-east-1": "ami-083291a5317c6bf81",
+  "ami:account=411807801668:filters.image-type.0=machine:filters.name.0=chatwoot-v*28eb226c-174b-42ef-acdf-ca0f82854ec8:filters.state.0=available:owners.0=aws-marketplace:region=us-east-1": "ami-0d23f7f551d71c68d"
+}

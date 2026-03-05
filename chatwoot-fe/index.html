@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat – Chatwoot</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 640px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+    h1 { font-size: 1.25rem; color: #333; }
+    .note {
+      font-size: 0.875rem;
+      color: #666;
+      margin-top: 1rem;
+      padding: 0.75rem;
+      background: #f5f5f5;
+      border-radius: 6px;
+    }
+    .note code { font-size: 0.8em; background: #eee; padding: 0.1em 0.3em; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>Chat</h1>
+  <p>Use the chat bubble (bottom right) to open the widget and talk to support.</p>
+  <div class="note">
+    Chat widget loads from your Chatwoot instance. If the page is not on the same origin, set <code>BASE_URL</code> to your Chatwoot URL (e.g. <code>http://44.215.200.55:3000</code>).
+  </div>
+
+  <script>
+    (function(d,t) {
+      var BASE_URL = "http://44.215.200.55:3000";
+      var g = d.createElement(t), s = d.getElementsByTagName(t)[0];
+      g.src = BASE_URL + "/packs/js/sdk.js";
+      g.async = true;
+      s.parentNode.insertBefore(g, s);
+      g.onload = function() {
+        window.chatwootSDK.run({
+          websiteToken: 'bYZqDAbUcQDUt4SQVmwqM2xq',
+          baseUrl: BASE_URL
+        });
+      };
+    })(document, "script");
+  </script>
+</body>
+</html>
