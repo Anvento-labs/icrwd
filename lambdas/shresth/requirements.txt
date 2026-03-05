@@ -1,0 +1,6 @@
+boto3
+langgraph
+pydantic
+python-dotenv
+langchain-aws
+requests

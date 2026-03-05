@@ -21,6 +21,48 @@
       border-radius: 6px;
     }
     .note code { font-size: 0.8em; background: #eee; padding: 0.1em 0.3em; border-radius: 3px; }
+    
+    /* Custom Chat Widget Styles */
+    .cw-container {
+      position: fixed;
+      bottom: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .cw-container.left { left: 20px; align-items: flex-start; }
+    .cw-container.right { right: 20px; }
+
+    .cw-iframe {
+      width: 380px;
+      height: 600px;
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+      display: none;
+      margin-bottom: 20px;
+      background: white;
+    }
+
+    .cw-bubble {
+      width: 60px;
+      height: 60px;
+      border-radius: 30px;
+      background: #1f93ff;
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      font-size: 24px;
+      transition: transform 0.2s;
+    }
+    
+    .cw-bubble:hover {
+      transform: scale(1.05);
+    }
   </style>
 </head>
 <body>
@@ -30,20 +72,27 @@
     Chat widget loads from your Chatwoot instance. If the page is not on the same origin, set <code>BASE_URL</code> to your Chatwoot URL (e.g. <code>http://44.215.200.55:3000</code>).
   </div>
 
+  <!-- Left Widget: Manager's Channel -->
+  <div class="cw-container left">
+    <iframe id="iframe-left" class="cw-iframe" src="http://44.215.200.55:3000/widget?website_token=LrqLxPvY4HEAn2BCYwyFYNcM"></iframe>
+    <div class="cw-bubble" onclick="toggleChat('left')">💼</div>
+  </div>
+
+  <!-- Right Widget: Your Channel -->
+  <div class="cw-container right">
+    <iframe id="iframe-right" class="cw-iframe" src="http://44.215.200.55:3000/widget?website_token=bYZqDAbUcQDUt4SQVmwqM2xq"></iframe>
+    <div class="cw-bubble" onclick="toggleChat('right')">💬</div>
+  </div>
+
   <script>
-    (function(d,t) {
-      var BASE_URL = "http://44.215.200.55:3000";
-      var g = d.createElement(t), s = d.getElementsByTagName(t)[0];
-      g.src = BASE_URL + "/packs/js/sdk.js";
-      g.async = true;
-      s.parentNode.insertBefore(g, s);
-      g.onload = function() {
-        window.chatwootSDK.run({
-          websiteToken: 'bYZqDAbUcQDUt4SQVmwqM2xq',
-          baseUrl: BASE_URL
-        });
-      };
-    })(document, "script");
+    function toggleChat(side) {
+      const iframe = document.getElementById('iframe-' + side);
+      if (iframe.style.display === 'block') {
+        iframe.style.display = 'none';
+      } else {
+        iframe.style.display = 'block';
+      }
+    }
   </script>
 </body>
 </html>
