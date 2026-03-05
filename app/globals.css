@@ -1,50 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@300;400;700;800&display=swap');
+
 :root {
-  --max-width: 1100px;
-  --border-radius: 12px;
-  --font-mono: ui-monospace, Menlo, Monaco, 'Cascadia Mono', 'Segoe UI Mono',
-    'Roboto Mono', 'Oxygen Mono', 'Ubuntu Monospace', 'Source Code Pro',
-    'Fira Mono', 'Droid Sans Mono', 'Courier New', monospace;
-
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: #CBBEFF;
-  --background-end-rgb: 255, 255, 255;
-
-  --callout-rgb: 238, 240, 241;
-  --callout-border-rgb: 172, 175, 176;
-  --card-rgb: #6649AE;
-  --card-border-rgb: 131, 134, 135;
+  --bg: #04040a;
+  --glass: rgba(12, 12, 22, 0.55);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-lit: rgba(255, 255, 255, 0.14);
+  --accent: #c8f;
+  --accent2: #58f;
+  --accent3: #4ef;
+  --text: rgba(255, 255, 255, 0.92);
+  --text-dim: rgba(255, 255, 255, 0.38);
+  --mono: 'Space Mono', monospace;
+  --display: 'Syne', sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-
-    --callout-rgb: 20, 20, 20;
-    --callout-border-rgb: 108, 108, 108;
-    --card-rgb: 100, 100, 100;
-    --card-border-rgb: 200, 200, 200;
-  }
-}
-
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
-  padding: 0;
   margin: 0;
+  padding: 0;
 }
 
 html,
 body {
-  max-width: 100vw;
+  height: 100%;
   overflow-x: hidden;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))) rgb(var(--background-start-rgb));
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 100vh;
+  position: relative;
+}
+
+/* ── Aurora Background ─────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% -10%, rgba(140, 60, 255, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 110%, rgba(50, 100, 255, 0.16) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 60% 40%, rgba(0, 220, 200, 0.06) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+  animation: auroraShift 12s ease-in-out infinite alternate;
+}
+
+@keyframes auroraShift {
+  0% {
+    opacity: 0.8;
+    transform: scale(1) translate(0, 0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1.04) translate(-1%, 1%);
+  }
+}
+
+/* Noise grain overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 0;
 }
 
 a {
@@ -52,8 +78,217 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+/* ── Amplify Authenticator Variables ──────────────── */
+[data-amplify-authenticator] {
+  --amplify-colors-background-primary: transparent;
+  --amplify-colors-background-secondary: transparent;
+  --amplify-colors-background-tertiary: transparent;
+  --amplify-colors-font-primary: rgba(255, 255, 255, 0.92);
+  --amplify-colors-font-secondary: rgba(255, 255, 255, 0.45);
+  --amplify-colors-font-interactive: var(--accent);
+  --amplify-components-fieldcontrol-color: white;
+  --amplify-components-fieldcontrol-background-color: rgba(255, 255, 255, 0.04);
+  --amplify-components-fieldcontrol-border-color: rgba(255, 255, 255, 0.1);
+  --amplify-components-fieldcontrol-focus-border-color: rgba(200, 136, 255, 0.6);
+  --amplify-components-fieldcontrol-focus-box-shadow: 0 0 0 2px rgba(200, 136, 255, 0.15);
+  --amplify-components-fieldcontrol-border-radius: 10px;
+  --amplify-components-label-color: rgba(255, 255, 255, 0.55);
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── The Glass Card ────────────────────────────── */
+[data-amplify-authenticator] [data-amplify-router] {
+  background: var(--glass) !important;
+  backdrop-filter: blur(32px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(160%) !important;
+  border: 1px solid var(--border-lit) !important;
+  border-radius: 20px !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 32px 80px -16px rgba(0, 0, 0, 0.9),
+    0 0 60px -20px rgba(140, 60, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  padding: 2rem !important;
+  width: 400px !important;
+  max-width: calc(100vw - 2rem) !important;
+  animation: cardIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
   }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Top shimmer line */
+[data-amplify-authenticator] [data-amplify-router]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(200, 136, 255, 0.5), rgba(80, 130, 255, 0.5), transparent);
+  border-radius: 999px;
+}
+
+/* ── Tabs ─────────────────────────────────────── */
+[data-amplify-authenticator] .amplify-tabs {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  gap: 0 !important;
+  margin-bottom: 1.5rem !important;
+}
+
+[data-amplify-authenticator] .amplify-tabs-item {
+  color: var(--text-dim) !important;
+  font-family: var(--mono) !important;
+  font-size: 0.7rem !important;
+  letter-spacing: 0.15em !important;
+  text-transform: uppercase !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  padding: 0.75rem 1.25rem !important;
+  transition: all 0.25s ease !important;
+  background: transparent !important;
+}
+
+[data-amplify-authenticator] .amplify-tabs-item[data-state='active'] {
+  color: white !important;
+  border-bottom-color: var(--accent) !important;
+}
+
+[data-amplify-authenticator] .amplify-tabs-item:hover:not([data-state='active']) {
+  color: rgba(255, 255, 255, 0.65) !important;
+}
+
+/* ── Labels ───────────────────────────────────── */
+[data-amplify-authenticator] .amplify-label {
+  font-family: var(--mono) !important;
+  font-size: 0.65rem !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  color: rgba(255, 255, 255, 0.45) !important;
+  margin-bottom: 0.4rem !important;
+}
+
+/* ── Inputs ───────────────────────────────────── */
+[data-amplify-authenticator] .amplify-input {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  border-radius: 10px !important;
+  color: white !important;
+  font-family: var(--mono) !important;
+  font-size: 0.85rem !important;
+  padding: 0.7rem 1rem !important;
+  transition: all 0.25s ease !important;
+  width: 100% !important;
+}
+
+[data-amplify-authenticator] .amplify-input:focus {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgba(200, 136, 255, 0.45) !important;
+  box-shadow: 0 0 0 3px rgba(200, 136, 255, 0.08) !important;
+  outline: none !important;
+}
+
+[data-amplify-authenticator] .amplify-input::placeholder {
+  color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Show password button */
+[data-amplify-authenticator] .amplify-field-group__control {
+  border-radius: 10px !important;
+  overflow: hidden !important;
+}
+
+/* ── Primary Button ───────────────────────────── */
+[data-amplify-authenticator] .amplify-button--primary {
+  background: linear-gradient(135deg, rgba(180, 80, 255, 0.9) 0%, rgba(80, 100, 255, 0.9) 100%) !important;
+  border: 1px solid rgba(200, 136, 255, 0.3) !important;
+  border-radius: 10px !important;
+  color: white !important;
+  font-family: var(--mono) !important;
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.18em !important;
+  text-transform: uppercase !important;
+  padding: 0.8rem !important;
+  box-shadow:
+    0 4px 20px rgba(140, 60, 255, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  margin-top: 0.5rem !important;
+  width: 100% !important;
+}
+
+[data-amplify-authenticator] .amplify-button--primary:hover {
+  transform: translateY(-2px) !important;
+  box-shadow:
+    0 8px 30px rgba(140, 60, 255, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  border-color: rgba(200, 136, 255, 0.5) !important;
+}
+
+[data-amplify-authenticator] .amplify-button--primary:active {
+  transform: translateY(0) !important;
+}
+
+/* ── Link / Text Buttons ──────────────────────── */
+[data-amplify-authenticator] .amplify-button--link,
+[data-amplify-authenticator] .amplify-button--small {
+  color: rgba(200, 136, 255, 0.8) !important;
+  font-family: var(--mono) !important;
+  font-size: 0.7rem !important;
+  background: transparent !important;
+  border: none !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  transition: color 0.2s ease !important;
+}
+
+[data-amplify-authenticator] .amplify-button--link:hover,
+[data-amplify-authenticator] .amplify-button--small:hover {
+  color: white !important;
+  background: transparent !important;
+}
+
+/* ── Divider / Separators ─────────────────────── */
+[data-amplify-authenticator] .amplify-divider {
+  border-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* ── Form field spacing ───────────────────────── */
+[data-amplify-authenticator] .amplify-flex {
+  gap: 1rem !important;
+}
+
+/* ── Error / Alert ────────────────────────────── */
+[data-amplify-authenticator] .amplify-alert--error {
+  background: rgba(255, 60, 80, 0.08) !important;
+  border: 1px solid rgba(255, 60, 80, 0.2) !important;
+  border-radius: 10px !important;
+  color: rgba(255, 150, 160, 0.9) !important;
+  font-family: var(--mono) !important;
+  font-size: 0.75rem !important;
+}
+
+/* ── Heading in Header component ─────────────── */
+[data-amplify-authenticator] h4,
+[data-amplify-authenticator] .amplify-heading {
+  font-family: var(--display) !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.15em !important;
+  text-transform: uppercase !important;
 }
