@@ -8,7 +8,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 CHATWOOT_BASE_URL = "http://44.215.200.55:3000".rstrip("/")
-CHATWOOT_BOT_TOKEN = "LrqLxPvY4HEAn2BCYwyFYNcM" 
+CHATWOOT_BOT_TOKEN = "pssyUeBpYN54K9iJdksW3UEd" 
 
 def lambda_handler(event, context):
     logger.info("Webhook received.")

@@ -20,7 +20,7 @@ export class ShresthLambdaStack extends cdk.Stack {
 
     this.fn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['bedrock:InvokeModel'],
+        actions: ['bedrock:InvokeModel', 'bedrock:Retrieve'],
         resources: ['*'],
       })
     );

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Right Widget</title>
+  <style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  </style>
+</head>
+<body>
+  <script>
+    window.chatwootSettings = {
+      hideMessageBubble: true,
+      position: "right"
+    };
+    (function(d,t) {
+      var BASE_URL="http://44.215.200.55:3000";
+      var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+      g.src=BASE_URL+"/packs/js/sdk.js";
+      g.defer = true;
+      g.async = true;
+      s.parentNode.insertBefore(g,s);
+      g.onload=function(){
+        window.chatwootSDK.run({
+          websiteToken: 'bYZqDAbUcQDUt4SQVmwqM2xq',
+          baseUrl: BASE_URL
+        });
+        window.addEventListener("chatwoot:ready", function () {
+          window.$chatwoot.toggle("open");
+        });
+      }
+    })(document,"script");
+  </script>
+</body>
+</html>
