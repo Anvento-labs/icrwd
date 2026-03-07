@@ -9,14 +9,18 @@ from app.graph import app_graph
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# --- CONFIGURATION ---
 CHATWOOT_BASE_URL = os.environ.get("CHATWOOT_BASE_URL", "http://44.215.200.55:3000").rstrip("/")
 CHATWOOT_BOT_TOKEN = os.environ.get("CHATWOOT_BOT_TOKEN", "pssyUeBpYN54K9iJdksW3UEd") 
 CHATWOOT_USER_TOKEN = os.environ.get("CHATWOOT_USER_TOKEN", "Ey7U2scnyhg1T8t9midZHTrv")
-DEFAULT_ASSIGNEE_ID=1 
+
+# Agent ID to assign chats to during a handoff
+DEFAULT_ASSIGNEE_ID = 1
 
 def lambda_handler(event, context):
     logger.info("Webhook received.")
 
+    # 1. PARSE EVENT
     try:
         body = event.get("body") or ""
         if event.get("isBase64Encoded"):
@@ -29,10 +33,12 @@ def lambda_handler(event, context):
     event_name = payload.get("event")
     message_type = payload.get("message_type")
     
+    # 2. PREVENT INFINITE LOOPS
     if event_name != "message_created" or message_type != "incoming":
         logger.info("Ignored non-incoming message or non-message event.")
         return _http(200, json.dumps({"status": "ignored"}))
 
+    # 3. EXTRACT CHATWOOT DATA
     content = (payload.get("content") or "").strip()
     conversation = payload.get("conversation") or {}
     account = payload.get("account") or {}
@@ -40,9 +46,9 @@ def lambda_handler(event, context):
     conversation_id = conversation.get("id")
 
     if not content or account_id is None or conversation_id is None:
-        logger.warning("Missing message content or conversation ID.")
         return _http(200, json.dumps({"status": "missing data"}))
 
+    # --- SETUP HEADERS ---
     headers_for_bot = {
         "Content-Type": "application/json",
         "api_access_token": CHATWOOT_BOT_TOKEN,
@@ -53,13 +59,18 @@ def lambda_handler(event, context):
         "api_access_token": CHATWOOT_USER_TOKEN, 
     }
 
-    logger.info("Sending interim processing message...")
-    _chatwoot_post(
-        CHATWOOT_BASE_URL, account_id, conversation_id, None, "messages",
-        {"content": "Give me just a moment while I check the records for you...", "message_type": "outgoing"},
+    # 4. SEND TEMPORARY "THINKING" BUBBLE
+    logger.info("Sending interim processing bubble...")
+    interim_response = _chatwoot_request(
+        "POST", CHATWOOT_BASE_URL, account_id, conversation_id, "messages",
+        {"content": "Thinking...", "message_type": "outgoing"},
         headers_for_bot
     )
+    
+    # Capture the ID of the temporary message so we can delete it later
+    interim_message_id = interim_response.get("id") if interim_response else None
 
+    # 5. RUN LANGGRAPH WORKFLOW
     try:
         logger.info(f"Invoking LangGraph with question: {content}")
         final_state = app_graph.invoke({"question": content})
@@ -68,56 +79,66 @@ def lambda_handler(event, context):
         logger.error(f"LangGraph execution error: {e}")
         bot_response = "Sorry, my systems are experiencing a temporary error."
 
+    # 6. ROUTER CHECK FOR HANDOFF
     handoff_keywords = ["transferring", "human agent", "flagged your conversation", "escalating"]
     is_handoff = any(keyword in bot_response.lower() for keyword in handoff_keywords)
 
-    _chatwoot_post(
-        CHATWOOT_BASE_URL, account_id, conversation_id, None, "messages",
+    # 7. DELETE THE TEMPORARY BUBBLE
+    if interim_message_id:
+        logger.info(f"Deleting interim message {interim_message_id}...")
+        _chatwoot_request(
+            "DELETE", CHATWOOT_BASE_URL, account_id, conversation_id, f"messages/{interim_message_id}",
+            None, headers_for_admin
+        )
+
+    # 8. SEND THE FINAL AI REPLY
+    _chatwoot_request(
+        "POST", CHATWOOT_BASE_URL, account_id, conversation_id, "messages",
         {"content": bot_response, "message_type": "outgoing"},
         headers_for_bot
     )
 
+    # 9. IF HANDOFF, ALERT AND ASSIGN TO HUMAN AGENT
     if is_handoff:
-        logger.info("Handoff triggered. Opening and assigning conversation for human agents.")
+        logger.info("Handoff triggered. Opening and assigning conversation.")
         
-        _chatwoot_post(
-            CHATWOOT_BASE_URL, account_id, conversation_id, "toggle_status", None,
-            {"status": "open"},
-            headers_for_bot
+        _chatwoot_request(
+            "POST", CHATWOOT_BASE_URL, account_id, conversation_id, "toggle_status",
+            {"status": "open"}, headers_for_bot
         )
         
-        _chatwoot_post(
-            CHATWOOT_BASE_URL, account_id, conversation_id, "assignments", None,
-            {"assignee_id": DEFAULT_ASSIGNEE_ID},
-            headers_for_admin
+        _chatwoot_request(
+            "POST", CHATWOOT_BASE_URL, account_id, conversation_id, "assignments",
+            {"assignee_id": DEFAULT_ASSIGNEE_ID}, headers_for_admin
         )
 
     return _http(200, json.dumps({"status": "success"}))
 
 
-def _chatwoot_post(base_url, account_id, conversation_id, path_suffix, path_key, data, headers):
+def _chatwoot_request(method, base_url, account_id, conversation_id, endpoint, data, headers):
     """
-    Unified function that decides the Chatwoot URL based on suffix/key.
-    Uses urllib to avoid heavy external dependencies like 'requests'.
+    A generic request handler that supports POST and DELETE methods, 
+    and returns the JSON response from Chatwoot.
     """
-    if path_suffix:
-        url = f"{base_url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/{path_suffix}"
-    else:
-        url = f"{base_url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/{path_key}"
-        
+    url = f"{base_url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/{endpoint}"
+    
     req = urllib.request.Request(
         url,
-        data=json.dumps(data).encode("utf-8"),
+        data=json.dumps(data).encode("utf-8") if data else None,
         headers=headers,
-        method="POST",
+        method=method,
     )
     
     try:
-        urllib.request.urlopen(req)
+        response = urllib.request.urlopen(req)
+        response_body = response.read().decode('utf-8')
+        return json.loads(response_body) if response_body else {}
     except urllib.error.HTTPError as e:
         logger.error(f"Chatwoot API error {e.code}: {e.read()}")
+        return None
     except urllib.error.URLError as e:
         logger.error(f"Chatwoot API URLError: {e.reason}")
+        return None
 
 
 def _http(status_code, body):
