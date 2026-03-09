@@ -9,18 +9,15 @@ from app.graph import app_graph
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# --- CONFIGURATION ---
 CHATWOOT_BASE_URL = os.environ.get("CHATWOOT_BASE_URL", "http://44.215.200.55:3000").rstrip("/")
-CHATWOOT_BOT_TOKEN = os.environ.get("CHATWOOT_BOT_TOKEN", "pssyUeBpYN54K9iJdksW3UEd") 
-CHATWOOT_USER_TOKEN = os.environ.get("CHATWOOT_USER_TOKEN", "Ey7U2scnyhg1T8t9midZHTrv")
+CHATWOOT_BOT_TOKEN = os.environ.get("CHATWOOT_BOT_TOKEN", "xTp1he5yEqk81dzKzb4NNfUe") 
+CHATWOOT_USER_TOKEN = os.environ.get("CHATWOOT_USER_TOKEN", "MDrsGNERoskafLdnYzVB8KR2")
 
-# Agent ID to assign chats to during a handoff
 DEFAULT_ASSIGNEE_ID = 1
 
 def lambda_handler(event, context):
     logger.info("Webhook received.")
 
-    # 1. PARSE EVENT
     try:
         body = event.get("body") or ""
         if event.get("isBase64Encoded"):
@@ -33,12 +30,10 @@ def lambda_handler(event, context):
     event_name = payload.get("event")
     message_type = payload.get("message_type")
     
-    # 2. PREVENT INFINITE LOOPS
     if event_name != "message_created" or message_type != "incoming":
         logger.info("Ignored non-incoming message or non-message event.")
         return _http(200, json.dumps({"status": "ignored"}))
 
-    # 3. EXTRACT CHATWOOT DATA
     content = (payload.get("content") or "").strip()
     conversation = payload.get("conversation") or {}
     account = payload.get("account") or {}
@@ -48,7 +43,6 @@ def lambda_handler(event, context):
     if not content or account_id is None or conversation_id is None:
         return _http(200, json.dumps({"status": "missing data"}))
 
-    # --- SETUP HEADERS ---
     headers_for_bot = {
         "Content-Type": "application/json",
         "api_access_token": CHATWOOT_BOT_TOKEN,
@@ -59,7 +53,6 @@ def lambda_handler(event, context):
         "api_access_token": CHATWOOT_USER_TOKEN, 
     }
 
-    # 4. SEND TEMPORARY "THINKING" BUBBLE
     logger.info("Sending interim processing bubble...")
     interim_response = _chatwoot_request(
         "POST", CHATWOOT_BASE_URL, account_id, conversation_id, "messages",
@@ -67,10 +60,8 @@ def lambda_handler(event, context):
         headers_for_bot
     )
     
-    # Capture the ID of the temporary message so we can delete it later
     interim_message_id = interim_response.get("id") if interim_response else None
 
-    # 5. RUN LANGGRAPH WORKFLOW
     try:
         logger.info(f"Invoking LangGraph with question: {content}")
         final_state = app_graph.invoke({"question": content})
@@ -79,11 +70,9 @@ def lambda_handler(event, context):
         logger.error(f"LangGraph execution error: {e}")
         bot_response = "Sorry, my systems are experiencing a temporary error."
 
-    # 6. ROUTER CHECK FOR HANDOFF
     handoff_keywords = ["transferring", "human agent", "flagged your conversation", "escalating"]
     is_handoff = any(keyword in bot_response.lower() for keyword in handoff_keywords)
 
-    # 7. DELETE THE TEMPORARY BUBBLE
     if interim_message_id:
         logger.info(f"Deleting interim message {interim_message_id}...")
         _chatwoot_request(
@@ -91,14 +80,12 @@ def lambda_handler(event, context):
             None, headers_for_admin
         )
 
-    # 8. SEND THE FINAL AI REPLY
     _chatwoot_request(
         "POST", CHATWOOT_BASE_URL, account_id, conversation_id, "messages",
         {"content": bot_response, "message_type": "outgoing"},
         headers_for_bot
     )
 
-    # 9. IF HANDOFF, ALERT AND ASSIGN TO HUMAN AGENT
     if is_handoff:
         logger.info("Handoff triggered. Opening and assigning conversation.")
         
