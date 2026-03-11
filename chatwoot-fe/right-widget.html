@@ -26,11 +26,28 @@
           websiteToken: 'bYZqDAbUcQDUt4SQVmwqM2xq',
           baseUrl: BASE_URL
         });
-        window.addEventListener("chatwoot:ready", function () {
-          window.$chatwoot.toggle("open");
-        });
+        // We let index.html control when to open the widget
       }
     })(document,"script");
+
+    // 1. Listen for the native "X" (close) click from Chatwoot
+    window.addEventListener("message", function(event) {
+      try {
+        var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (data.type === "close-widget") {
+          window.parent.postMessage({ action: "closeWidget", side: "right" }, "*");
+        }
+      } catch(e) {}
+    });
+
+    // 2. Listen for clicks on the custom blue buttons from index.html
+    window.addEventListener("message", function(event) {
+      if (event.data && event.data.action === "openChatwoot" && window.$chatwoot) {
+        window.$chatwoot.toggle("open");
+      } else if (event.data && event.data.action === "closeChatwoot" && window.$chatwoot) {
+        window.$chatwoot.toggle("close");
+      }
+    });
   </script>
 </body>
 </html>

@@ -101,3 +101,5 @@ coverage/
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
+
+mongodb_data/

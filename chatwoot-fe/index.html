@@ -32,28 +32,29 @@
       align-items: flex-end;
     }
     .cw-container.left { left: 20px; align-items: flex-start; }
+    .cw-container.middle { left: 50%; transform: translateX(-50%); align-items: center; }
     .cw-container.right { right: 20px; }
 
     .cw-iframe {
-      width: 380px;
+      width: 400px;
       height: 600px;
       border: none;
       border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-      display: none;
-      margin-bottom: 20px;
-      background: white;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      display: none; /* Hidden by default */
+      margin-bottom: 16px;
+      background: transparent;
     }
 
     .cw-bubble {
-      width: 60px;
-      height: 60px;
-      border-radius: 30px;
+      width: 56px;
+      height: 56px;
+      border-radius: 28px;
       background: #1f93ff;
       color: white;
       display: flex;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
       cursor: pointer;
       box-shadow: 0 4px 16px rgba(0,0,0,0.1);
       font-size: 24px;
@@ -67,24 +68,21 @@
 </head>
 <body>
   <h1>Chat</h1>
-  <p>Use the chat bubble (bottom right) to open the widget and talk to support.</p>
+  <p>Use the chat bubbles to open the widget and talk to support.</p>
   <div class="note">
     Chat widget loads from your Chatwoot instance. If the page is not on the same origin, set <code>BASE_URL</code> to your Chatwoot URL (e.g. <code>http://44.215.200.55:3000</code>).
   </div>
 
-  <!-- Left Widget: Manager's Channel -->
   <div class="cw-container left">
     <iframe id="iframe-left" class="cw-iframe" src="./left-widget.html"></iframe>
     <div class="cw-bubble" onclick="toggleChat('left')">💼</div>
   </div>
 
-  <!-- Middle Widget: AI Agent Channel -->
   <div class="cw-container middle">
     <iframe id="iframe-middle" class="cw-iframe" src="./middle-widget.html"></iframe>
     <div class="cw-bubble" onclick="toggleChat('middle')">🤖</div>
   </div>
 
-  <!-- Right Widget: Your Channel -->
   <div class="cw-container right">
     <iframe id="iframe-right" class="cw-iframe" src="./right-widget.html"></iframe>
     <div class="cw-bubble" onclick="toggleChat('right')">💬</div>
@@ -95,10 +93,24 @@
       const iframe = document.getElementById('iframe-' + side);
       if (iframe.style.display === 'block') {
         iframe.style.display = 'none';
+        // Tell the iframe to close the internal Chatwoot widget
+        iframe.contentWindow.postMessage({ action: "closeChatwoot" }, "*");
       } else {
         iframe.style.display = 'block';
+        // Tell the iframe to open the internal Chatwoot widget
+        iframe.contentWindow.postMessage({ action: "openChatwoot" }, "*");
       }
     }
+
+    // Listen for the native "X" click coming from the Chatwoot iframes
+    window.addEventListener("message", function(event) {
+      if (event.data && event.data.action === "closeWidget") {
+        const iframe = document.getElementById('iframe-' + event.data.side);
+        if (iframe) {
+          iframe.style.display = 'none';
+        }
+      }
+    });
   </script>
 </body>
 </html>
