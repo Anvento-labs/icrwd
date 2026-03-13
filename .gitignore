@@ -103,3 +103,9 @@ coverage/
 # pnpm-lock.yaml
 
 mongodb_data/
+
+# Reference / local / history (not tracked)
+langgraph-multi-agent/
+agents-from-scratch/
+.cursor/
+cms-history/
