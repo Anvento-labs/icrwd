@@ -1,0 +1,560 @@
+"""
+Step 3: Validation against user campaigns (MongoDB).
+Fetch user's campaigns and campaign rules; validate extracted data (merchant, date, products, vendor rules).
+"""
+
+import logging
+import re
+from datetime import datetime
+from difflib import SequenceMatcher
+from typing import Any, Dict, List
+
+from state import AIEngineState
+from config import (
+    MONGODB_URI,
+    MONGODB_DATABASE,
+    MONGODB_CRWDS_COLLECTION,
+    MONGODB_CAMPAIGN_RULES_COLLECTION,
+    MONGODB_USERS_COLLECTION,
+    MONGODB_BLOCK_USERS_COLLECTION,
+    MONGODB_ADDED_WORKER_CRWD_MEMBERS_COLLECTION,
+    MONGODB_ORDER_RECEIPT_REVIEWS_COLLECTION,
+)
+from services.mongodb_campaigns import (
+    find_crwd_by_merchant_name,
+    get_user,
+    is_user_blocked,
+    is_worker_in_campaign,
+    get_campaign_rules,
+    order_number_used_in_campaign,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _fuzzy_match_product(
+    product_name: str, target_name: str, threshold: float = 0.90
+) -> tuple[bool, float]:
+    if not product_name or not target_name:
+        return False, 0.0
+    a = " ".join(product_name.lower().split())
+    b = " ".join(target_name.lower().split())
+    similarity = SequenceMatcher(None, a, b).ratio()
+    return similarity >= threshold, similarity
+
+
+def _validate_merchant(merchant_name: str, valid_merchants: List[str]) -> tuple[bool, str]:
+    if not merchant_name:
+        return False, "Merchant name not found in receipt"
+    merchant_lower = merchant_name.lower()
+    for v in valid_merchants:
+        if v.lower() in merchant_lower or merchant_lower in v.lower():
+            return True, ""
+    return False, f"Merchant '{merchant_name}' is not valid for this campaign. Valid: {', '.join(valid_merchants)}"
+
+
+def _parse_purchase_date(purchase_date: Any) -> datetime | None:
+    if purchase_date is None:
+        return None
+    if isinstance(purchase_date, datetime):
+        return purchase_date
+    s = str(purchase_date).strip()
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"):
+        try:
+            return datetime.strptime(s[:10], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _date_range_from_crwd(crwd: Dict[str, Any]) -> Dict[str, str]:
+    """Build date_range dict from crwd start_date/end_date (ISODate or str)."""
+    start_date = crwd.get("start_date")
+    end_date = crwd.get("end_date")
+    if hasattr(start_date, "strftime"):
+        start_date = start_date.strftime("%Y-%m-%d")
+    else:
+        start_date = str(start_date)[:10] if start_date else ""
+    if hasattr(end_date, "strftime"):
+        end_date = end_date.strftime("%Y-%m-%d")
+    else:
+        end_date = str(end_date)[:10] if end_date else ""
+    return {"start_date": start_date or "1970-01-01", "end_date": end_date or "2099-12-31"}
+
+
+def _validate_date(
+    purchase_date: Any, date_range: Dict[str, str]
+) -> tuple[bool, str]:
+    if not date_range or not date_range.get("start_date") or not date_range.get("end_date"):
+        return True, ""
+    dt = _parse_purchase_date(purchase_date)
+    if not dt:
+        return False, "Purchase date not found in receipt"
+    try:
+        start = datetime.strptime(date_range["start_date"], "%Y-%m-%d")
+        end = datetime.strptime(date_range["end_date"], "%Y-%m-%d")
+    except (ValueError, KeyError):
+        return True, ""
+    if start <= dt <= end:
+        return True, ""
+    return False, f"Purchase date {dt.strftime('%Y-%m-%d')} is outside campaign date range ({date_range['start_date']} to {date_range['end_date']})"
+
+
+def _validate_products(
+    line_items: List[Dict[str, Any]],
+    required_products: List[Dict[str, Any]],
+    optional_products: List[Dict[str, Any]] | None = None,
+) -> tuple[bool, List[str], float]:
+    violations = []
+    match_scores = []
+    for rp in required_products:
+        name = rp.get("name", "")
+        sku = rp.get("sku")
+        fuzzy_match = rp.get("fuzzy_match", True)
+        min_quantity = rp.get("min_quantity", 1)
+        found = False
+        found_quantity = 0
+        best = 0.0
+        for li in line_items:
+            item_name = li.get("product_name", "")
+            item_sku = li.get("sku", "")
+            item_qty = li.get("quantity", 1)
+            if sku and item_sku and sku.lower() == item_sku.lower():
+                found = True
+                found_quantity += item_qty
+                best = 1.0
+                continue
+            if fuzzy_match:
+                ok, sim = _fuzzy_match_product(item_name, name)
+                if ok:
+                    found = True
+                    found_quantity += item_qty
+                    best = max(best, sim)
+            else:
+                if name.lower() in item_name.lower() or item_name.lower() in name.lower():
+                    found = True
+                    found_quantity += item_qty
+                    best = 1.0
+        if found:
+            match_scores.append(best)
+            if found_quantity < min_quantity:
+                violations.append(
+                    f"Required product '{name}' quantity ({found_quantity}) < min ({min_quantity})"
+                )
+        else:
+            violations.append(f"Required product '{name}' not found in receipt")
+    overall = sum(match_scores) / len(match_scores) if match_scores else 0.0
+    return len(violations) == 0, violations, overall
+
+
+def _validate_vendor_rules(
+    extracted_data: Dict[str, Any], vendor_type: str, vendor_rules: Dict[str, Any]
+) -> tuple[bool, List[str]]:
+    violations = []
+    if vendor_type not in vendor_rules:
+        return True, []
+    rules = vendor_rules[vendor_type]
+    if "order_number_pattern" in rules:
+        order_number = extracted_data.get("order_number", "")
+        pattern = rules["order_number_pattern"]
+        if rules.get("required", False) and not order_number:
+            violations.append(f"{vendor_type.capitalize()} order number required but not found")
+        elif order_number and not re.match(pattern, order_number):
+            violations.append(f"{vendor_type.capitalize()} order number does not match pattern")
+    return len(violations) == 0, violations
+
+
+def _calculate_validation_score(validation_results: List[Dict[str, Any]]) -> float:
+    if not validation_results:
+        return 0.0
+    n = len(validation_results)
+    passed = sum(1 for r in validation_results if r.get("passed", False))
+    base = (passed / n) * 100
+    confs = [r.get("confidence", 0.0) for r in validation_results if r.get("confidence") is not None]
+    if confs:
+        avg = sum(confs) / len(confs)
+        return round((base * 0.7) + (avg * 100 * 0.3), 2)
+    return round(base, 2)
+
+
+def _determine_final_decision(
+    validation_score: float, violations: List[str], extraction_confidence: float
+) -> tuple[str, bool, str]:
+    has_critical = any(
+        "merchant" in v.lower() or "date" in v.lower() for v in violations
+    )
+    if has_critical or validation_score < 50:
+        return "REJECTED", False, "; ".join(violations[:3])
+    if validation_score >= 90 and extraction_confidence >= 0.85 and not violations:
+        return "APPROVED", False, ""
+    reasons = []
+    if validation_score < 90:
+        reasons.append(f"Validation score ({validation_score}) below 90")
+    if extraction_confidence < 0.85:
+        reasons.append(f"Extraction confidence ({extraction_confidence:.2f}) below 0.85")
+    if violations:
+        reasons.append(f"{len(violations)} validation issue(s)")
+    return "PENDING_REVIEW", True, "; ".join(reasons)
+
+
+def _fail(out: Dict[str, Any], audit_trail: List[Dict], review_reason: str, action: str) -> Dict[str, Any]:
+    """Append audit entry and set review_reason and reply_message; return out."""
+    logger.warning("validation_fail | action=%s | review_reason=%s", action, review_reason)
+    audit_trail.append({
+        "step": "validation",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "action": action,
+        "reason": review_reason,
+        "status": "error",
+    })
+    out["review_reason"] = review_reason
+    out["reply_message"] = review_reason
+    out["audit_trail"] = audit_trail
+    return out
+
+
+def _build_reply_message(final_decision: str, validation_status: str, review_reason: str, campaign_name: str, validation_score: float) -> str:
+    """Build user-facing reply from validation result."""
+    if final_decision == "APPROVED":
+        parts = ["Receipt approved."]
+        if campaign_name:
+            parts.append(f"Campaign: {campaign_name}.")
+        if validation_score is not None:
+            parts.append(f"Score: {validation_score:.0%}.")
+        return " ".join(parts)
+    if final_decision == "REJECTED" and review_reason:
+        return review_reason
+    if validation_status == "pending_review" or final_decision == "PENDING_REVIEW":
+        parts = ["Receipt is under review."]
+        if review_reason:
+            parts.append(review_reason)
+        if campaign_name:
+            parts.append(f"Campaign: {campaign_name}.")
+        return " ".join(parts)
+    return review_reason or "Validation completed."
+
+
+def _check_multiproof_pending(state: AIEngineState) -> Dict[str, Any] | None:
+    """
+    If campaign requires multiple proof types and we don't have all yet, return state update
+    with reply_message, pending_proof_types, submitted_proofs (existing + current). Else return None.
+    """
+    required = state.get("required_proof_types") or []
+    if len(required) <= 1:
+        return None
+    submitted = list(state.get("submitted_proofs") or [])
+    detected_type = state.get("detected_image_type")
+    if detected_type and state.get("extracted_data") is not None:
+        submitted.append({
+            "proof_type": detected_type,
+            "extracted_data": state.get("extracted_data"),
+            "receipt_s3_key": state.get("receipt_s3_key"),
+        })
+    submitted_types = [p.get("proof_type") for p in submitted if p.get("proof_type")]
+    pending = [t for t in required if t not in submitted_types]
+    if not pending:
+        return None
+    # Build user-facing message
+    detected_label = detected_type or "this image"
+    n_total = len(required)
+    n_done = len(submitted_types)
+    n_more = len(pending)
+    reply = (
+        f"We believe the image you uploaded is a {detected_label.replace('_', ' ')}. "
+        f"This campaign requires {n_total} proof type(s) in total. You have submitted {n_done}. "
+        f"Please also upload: {', '.join(p.replace('_', ' ') for p in pending)} ({n_more} more). "
+        f"Upload a {pending[0].replace('_', ' ')} image next."
+    )
+    return {
+        "submitted_proofs": submitted,
+        "pending_proof_types": pending,
+        "reply_message": reply,
+    }
+
+
+def run_validation(state: AIEngineState) -> AIEngineState:
+    """
+    Step 3: Validate receipt. Campaign is inferred from merchant name (no campaign_id from user).
+    Order: (1) Find crwd by merchant name (2) Validate crwd (date, proof type) (3) Validate user (4) Receipt content.
+    """
+    logger.info("Step validation: started")
+    audit_trail = list(state.get("audit_trail", []))
+    out: Dict[str, Any] = {
+        **state,
+        "validation_status": "rejected",
+        "final_decision": "REJECTED",
+        "validation_score": 0.0,
+        "validation_results": [],
+        "violation_details": [],
+        "requires_manual_review": False,
+        "review_reason": None,
+        "decision_confidence": state.get("extraction_confidence"),
+        "audit_trail": audit_trail,
+    }
+
+    # 0. No extracted_data
+    if not state.get("extracted_data"):
+        logger.info("run_validation | step=0 | no extracted_data")
+        return _fail(out, audit_trail, "Data extraction failed", "no_extracted_data")
+
+    # 1. Merchant name
+    merchant_name = (state.get("merchant_name") or "").strip()
+    if not merchant_name:
+        logger.info("run_validation | step=1 | merchant_name empty")
+        return _fail(out, audit_trail, "Could not identify merchant from receipt", "no_merchant")
+
+    if not MONGODB_URI:
+        logger.warning("MONGODB_URI not set; skipping campaign validation")
+        out["review_reason"] = "MongoDB not configured (TODO: set MONGODB_URI)"
+        out["requires_manual_review"] = True
+        audit_trail.append({
+            "step": "validation",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "action": "skipped",
+            "reason": "mongodb_not_configured",
+            "status": "pending_review",
+        })
+        out["audit_trail"] = audit_trail
+        return out
+
+    # 2. Find crwd by merchant name (fuzzy match)
+    crwd, match_score = find_crwd_by_merchant_name(
+        MONGODB_URI,
+        MONGODB_DATABASE,
+        MONGODB_CRWDS_COLLECTION,
+        merchant_name,
+        min_similarity=0.7,
+    )
+    if not crwd:
+        return _fail(out, audit_trail, "No campaign found for this merchant", "no_matching_campaign")
+
+    campaign_id = str(crwd.get("_id", ""))
+    campaign_name = crwd.get("name", "")
+    out["campaign_id"] = campaign_id
+    out["campaign_name"] = campaign_name
+    logger.info(
+        "run_validation | step=2 | campaign_resolved | campaign_id=%s | campaign_name=%s | match_score=%.3f",
+        campaign_id,
+        campaign_name,
+        match_score,
+    )
+
+    # 3. Crwd active (already from get_active_crwds; double-check)
+    if crwd.get("status") != "Active" or crwd.get("isDeleted") is True:
+        return _fail(out, audit_trail, "Campaign is not active", "campaign_inactive")
+    logger.info("run_validation | step=3 | crwd active")
+
+    # 4. Receipt date in campaign window
+    date_range = _date_range_from_crwd(crwd)
+    purchase_date = state.get("purchase_date")
+    ok, err = _validate_date(purchase_date, date_range)
+    if not ok:
+        logger.info("run_validation | step=4 | date_out_of_range | purchase_date=%s | range=%s", purchase_date, date_range)
+        return _fail(out, audit_trail, "Receipt date is outside the campaign period", "receipt_date_outside_period")
+    logger.info("run_validation | step=4 | receipt_date_in_window | purchase_date=%s", purchase_date)
+
+    # 5. Proof type
+    if crwd.get("type_of_work_proof") != "order_receipt":
+        return _fail(out, audit_trail, "This campaign does not accept order receipts", "proof_type_mismatch")
+    logger.info("run_validation | step=5 | proof_type=order_receipt")
+
+    # 6. Optional crwd attributes (location, price, time_slots) — skip for now
+
+    # 7. User required
+    user_id = state.get("user_id") or ""
+    if not user_id:
+        return _fail(out, audit_trail, "Missing user", "missing_user")
+    logger.info("run_validation | step=7 | user_id=%s", user_id)
+
+    user = get_user(user_id, MONGODB_URI, MONGODB_DATABASE, MONGODB_USERS_COLLECTION)
+    if not user:
+        return _fail(out, audit_trail, "User not found", "user_not_found")
+
+    # 8. User active
+    if user.get("status") != "Active" or user.get("isDeleted") is True:
+        return _fail(out, audit_trail, "User is not active or is deleted", "user_not_active")
+    logger.info("run_validation | step=8 | user active")
+
+    # 9. User not blocked
+    if is_user_blocked(
+        user_id,
+        MONGODB_URI,
+        MONGODB_DATABASE,
+        MONGODB_USERS_COLLECTION,
+        MONGODB_BLOCK_USERS_COLLECTION,
+    ):
+        return _fail(out, audit_trail, "User is blocked", "user_blocked")
+    logger.info("run_validation | step=9 | user not blocked")
+
+    # 10. User member of this crwd
+    if not is_worker_in_campaign(
+        user_id,
+        campaign_id,
+        MONGODB_URI,
+        MONGODB_DATABASE,
+        MONGODB_ADDED_WORKER_CRWD_MEMBERS_COLLECTION,
+    ):
+        return _fail(out, audit_trail, "You are not a member of this campaign", "not_campaign_member")
+    logger.info("run_validation | step=10 | user is campaign member")
+
+    # 11. Receipt content: get campaign rules and validate merchant, products, vendor, optional order duplicate
+    rules = get_campaign_rules(
+        campaign_id,
+        MONGODB_URI,
+        MONGODB_DATABASE,
+        MONGODB_CRWDS_COLLECTION,
+        MONGODB_CAMPAIGN_RULES_COLLECTION,
+    )
+    if not rules:
+        return _fail(out, audit_trail, "Campaign rules not found", "no_campaign_rules")
+    logger.info("run_validation | step=11 | campaign_rules loaded")
+
+    out["campaign_rules"] = rules
+    extracted_data = state.get("extracted_data", {})
+    line_items = state.get("line_items", [])
+    vendor_type = state.get("vendor_type", "unknown")
+    extraction_confidence = state.get("extraction_confidence") or 0.0
+
+    validation_results = []
+    violations: List[str] = []
+
+    valid_merchants = rules.get("valid_merchants", [])
+    if valid_merchants:
+        ok, err = _validate_merchant(merchant_name, valid_merchants)
+        validation_results.append({
+            "rule": "merchant_validation",
+            "passed": ok,
+            "message": err if not ok else "Merchant validated",
+            "confidence": 1.0 if ok else 0.0,
+        })
+        if not ok:
+            violations.append(err)
+    else:
+        validation_results.append({
+            "rule": "merchant_validation",
+            "passed": True,
+            "message": "No merchant restriction",
+            "confidence": 1.0,
+        })
+
+    required = rules.get("required_products", [])
+    optional = rules.get("optional_products", [])
+    ok, vios, score = _validate_products(line_items, required, optional)
+    validation_results.append({
+        "rule": "product_validation",
+        "passed": ok,
+        "message": "; ".join(vios) if not ok else "Products validated",
+        "confidence": score,
+    })
+    violations.extend(vios)
+
+    vendor_rules = rules.get("vendor_specific_rules", {})
+    ok, vios = _validate_vendor_rules(extracted_data, vendor_type, vendor_rules)
+    validation_results.append({
+        "rule": f"{vendor_type}_specific_validation",
+        "passed": ok,
+        "message": "; ".join(vios) if not ok else f"{vendor_type} rules validated",
+        "confidence": 1.0 if ok else 0.0,
+    })
+    violations.extend(vios)
+
+    # Optional: order number duplicate
+    order_number = state.get("order_number") or extracted_data.get("order_number")
+    if order_number and order_number_used_in_campaign(
+        campaign_id,
+        order_number,
+        MONGODB_URI,
+        MONGODB_DATABASE,
+        MONGODB_ORDER_RECEIPT_REVIEWS_COLLECTION,
+        exclude_user_id=user_id,
+    ):
+        violations.append("Order number already used for this campaign")
+        validation_results.append({
+            "rule": "order_duplicate",
+            "passed": False,
+            "message": "Order number already used for this campaign",
+            "confidence": 0.0,
+        })
+
+    # 12. Final decision
+    validation_score = _calculate_validation_score(validation_results)
+    final_decision, requires_manual_review, review_reason = _determine_final_decision(
+        validation_score, violations, extraction_confidence
+    )
+    logger.info(
+        "run_validation | step=12 | final_decision=%s | validation_score=%.2f | violations_count=%s | requires_manual_review=%s | review_reason=%s",
+        final_decision,
+        validation_score,
+        len(violations),
+        requires_manual_review,
+        review_reason,
+    )
+
+    if final_decision == "APPROVED":
+        validation_status = "verified"
+    elif final_decision == "REJECTED":
+        validation_status = "rejected"
+    else:
+        validation_status = "pending_review"
+
+    out["validation_results"] = validation_results
+    out["validation_score"] = validation_score
+    out["violation_details"] = violations
+    out["validation_status"] = validation_status
+    out["final_decision"] = final_decision
+    out["requires_manual_review"] = requires_manual_review
+    out["review_reason"] = review_reason or None
+    out["reply_message"] = _build_reply_message(
+        final_decision,
+        validation_status,
+        review_reason or "",
+        crwd.get("name", ""),
+        validation_score,
+    )
+    audit_trail.append({
+        "step": "validation",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "action": "validation_completed",
+        "validation_score": validation_score,
+        "final_decision": final_decision,
+        "violations_count": len(violations),
+        "campaign_id": campaign_id,
+        "campaign_name": crwd.get("name", ""),
+        "status": "success",
+    })
+    out["audit_trail"] = audit_trail
+    return out
+
+
+def run_validation_bypass(state: AIEngineState) -> AIEngineState:
+    """
+    When BYPASS_VALIDATION is true: skip MongoDB validation and set final_decision from extraction only.
+    Sets final_decision=PENDING_REVIEW, validation_status=pending_review, review_reason="Validation bypassed (BYPASS_VALIDATION=true)".
+    """
+    logger.info("Step validation: bypass (BYPASS_VALIDATION=true); skipping MongoDB validation")
+    audit_trail = list(state.get("audit_trail", []))
+    reason = "Validation bypassed (BYPASS_VALIDATION=true)"
+    out: Dict[str, Any] = {
+        **state,
+        "validation_status": "pending_review",
+        "final_decision": "PENDING_REVIEW",
+        "validation_score": None,
+        "validation_results": [],
+        "violation_details": [],
+        "requires_manual_review": True,
+        "review_reason": reason,
+        "reply_message": "Receipt is under review. " + reason,
+        "decision_confidence": state.get("extraction_confidence"),
+        "audit_trail": audit_trail,
+    }
+    audit_trail.append({
+        "step": "validation",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "action": "bypassed",
+        "reason": "BYPASS_VALIDATION=true",
+        "status": "skipped",
+    })
+    out["audit_trail"] = audit_trail
+    return out
