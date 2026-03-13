@@ -5,6 +5,7 @@ import { ChatwootStack } from '../lib/chatwoot-stack';
 import { FeStack } from '../lib/fe-stack';
 import { LambdaStack } from '../lib/lambda-stack';
 import { ShresthLambdaStack } from '../lib/shresth-lambda-stack';
+import { SupportLambdaStack } from '../lib/support-lambda-stack';
 
 const app = new cdk.App();
 
@@ -25,3 +26,4 @@ new ChatwootStack(app, 'ChatwootStack', {
 new FeStack(app, 'FeStack', { env });
 new LambdaStack(app, 'LambdaStack', { env });
 new ShresthLambdaStack(app, 'ShresthLambdaStack', { env });
+new SupportLambdaStack(app, 'SupportLambdaStack', { env });

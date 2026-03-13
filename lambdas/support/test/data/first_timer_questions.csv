@@ -1,0 +1,60 @@
+id,message,expected_persona,sub_intent
+1,What is CRWD?,first_timer,basic_identity
+2,Is this real?,first_timer,trust_legitimacy
+3,How do I get paid?,first_timer,payment_basics
+4,"I saw this on Leah's TikTok, what's the gig?",first_timer,discovery_context
+5,How do I sign up?,first_timer,getting_started
+6,Do I need to download an app?,first_timer,getting_started
+7,Where do I create an account?,first_timer,getting_started
+8,Can I start right now?,first_timer,getting_started
+9,What do I need to do to get started?,first_timer,getting_started
+10,How old do you have to be?,first_timer,eligibility
+11,Do I need to be 18?,first_timer,eligibility
+12,Is this available in my area?,first_timer,eligibility
+13,Do I need any experience?,first_timer,eligibility
+14,Is this only for women?,first_timer,eligibility
+15,"I'm in Texas, can I join?",first_timer,eligibility
+16,What kind of tasks do you do?,first_timer,gig_details
+17,Do I have to buy something?,first_timer,gig_details
+18,Do I have to go to a store?,first_timer,gig_details
+19,Is this like mystery shopping?,first_timer,gig_details
+20,Do I have to post on social media?,first_timer,gig_details
+21,Will I need to write reviews?,first_timer,gig_details
+22,How long does a gig take?,first_timer,gig_details
+23,What products would I be trying?,first_timer,gig_details
+24,This sounds like a scam,first_timer,trust_skepticism
+25,Is this an MLM?,first_timer,trust_skepticism
+26,Do I have to pay anything upfront?,first_timer,trust_skepticism
+27,Who runs this?,first_timer,trust_skepticism
+28,Are you a real company?,first_timer,trust_skepticism
+29,Why would you pay me to buy something?,first_timer,trust_skepticism
+30,Is there a catch?,first_timer,trust_skepticism
+31,How much do gigs pay?,first_timer,payment_details
+32,Do I get paid in cash or gift cards?,first_timer,payment_details
+33,"Is it Venmo, Zelle, or PayPal?",first_timer,payment_details
+34,How long until I get paid?,first_timer,payment_details
+35,Do I get reimbursed for what I buy?,first_timer,payment_details
+36,Is there a minimum payout?,first_timer,payment_details
+37,"I got a text about this, what is it?",first_timer,discovery_context
+38,Someone on TikTok said I could make money with this,first_timer,discovery_context
+39,My friend told me about CRWD,first_timer,discovery_context
+40,I saw an ad on Instagram,first_timer,discovery_context
+41,A girl at Target told me about this,first_timer,discovery_context
+42,Is this a full-time thing?,first_timer,time_commitment
+43,Can I do this on weekends?,first_timer,time_commitment
+44,How many gigs can I do?,first_timer,time_commitment
+45,Is there a schedule?,first_timer,time_commitment
+46,Can I do this along with my regular job?,first_timer,time_commitment
+47,What info do you need from me?,first_timer,privacy_data
+48,Is my data safe?,first_timer,privacy_data
+49,Why do you need my phone number?,first_timer,privacy_data
+50,Will you sell my information?,first_timer,privacy_data
+51,Hey,first_timer,bare_greeting
+52,Is this like Instacart or mystery shopping?,first_timer,comparison
+53,Do I have to buy stuff with my own money?,first_timer,gig_details
+54,Is this available in Dallas?,first_timer,eligibility
+55,How old do you need to be?,first_timer,eligibility
+56,Can I do this part time?,first_timer,time_commitment
+57,"I got a random text about making money, what is this?",first_timer,discovery_context
+58,Do I need to pay anything to start?,first_timer,trust_skepticism
+59,This sounds like a scam lol,first_timer,trust_skepticism
