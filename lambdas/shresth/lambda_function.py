@@ -53,14 +53,13 @@ def lambda_handler(event, context):
         "api_access_token": CHATWOOT_USER_TOKEN, 
     }
 
-    logger.info("Sending interim processing bubble...")
-    interim_response = _chatwoot_request(
-        "POST", CHATWOOT_BASE_URL, account_id, conversation_id, "messages",
-        {"content": "Thinking...", "message_type": "outgoing"},
-        headers_for_bot
+    # --- CHANGED: Turn ON Native Typing Indicator (No text bubble) ---
+    logger.info("Turning on typing indicator...")
+    _chatwoot_request(
+        "POST", CHATWOOT_BASE_URL, account_id, conversation_id, "toggle_typing_status",
+        {"typing_status": "on"},
+        headers_for_admin # Uses Admin token for typing status
     )
-    
-    interim_message_id = interim_response.get("id") if interim_response else None
 
     try:
         logger.info(f"Invoking LangGraph with question: {content}")
@@ -73,13 +72,15 @@ def lambda_handler(event, context):
     handoff_keywords = ["transferring", "human agent", "flagged your conversation", "escalating"]
     is_handoff = any(keyword in bot_response.lower() for keyword in handoff_keywords)
 
-    if interim_message_id:
-        logger.info(f"Deleting interim message {interim_message_id}...")
-        _chatwoot_request(
-            "DELETE", CHATWOOT_BASE_URL, account_id, conversation_id, f"messages/{interim_message_id}",
-            None, headers_for_admin
-        )
+    # --- CHANGED: Turn OFF Native Typing Indicator ---
+    logger.info("Turning off typing indicator...")
+    _chatwoot_request(
+        "POST", CHATWOOT_BASE_URL, account_id, conversation_id, "toggle_typing_status",
+        {"typing_status": "off"},
+        headers_for_admin 
+    )
 
+    # Send the final response
     _chatwoot_request(
         "POST", CHATWOOT_BASE_URL, account_id, conversation_id, "messages",
         {"content": bot_response, "message_type": "outgoing"},
