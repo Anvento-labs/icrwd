@@ -1,0 +1,16 @@
+id,message,expected_persona,actual_persona,sub_intent,reply,passed
+1,Hi I want to know about active gigs available on CRWD,first_timer,first_timer,basic_identity,"Hello!
+
+Here are some active gigs available on CRWD:
+
+1. **Promote brand on social media** - $363, Web-based, Deadline: Until Sep 21, 2025
+2. **Freelance copywriter** - $388, Web-based, Deadline: Until Sep 21, 2025
+3. **Purchase product online** - $416, Web-based, Deadline: Until Sep 21, 2025
+4. **Content writer** - $100, Web-based, Deadline: Until Sep 21, 2025
+
+Each gig requires a different type of proof of work (like a receipt or review). To sign up, create an account on CRWD. If you have any questions, feel free to ask!
+
+Best regards,
+[Your Name]",True
+2,Is this real?,first_timer,first_timer,trust_legitimacy,"Hello! Yes, CRWD is very real and we're excited to have you on board. We're a gig platform where you can sign up for various tasks, complete them, and get paid. It's a great way to earn extra money doing what you love. If you're curious about how it works or want to explore current gigs, just let me know! We're here to help you every step of the way.",True
+3,How do I get paid?,first_timer,first_timer,payment_basics,"Hi there! Payments on CRWD are processed quickly. If you use Zelle, you'll receive your payment instantly. For other methods, payments are sent via Dots. If you need more details or have specific concerns, signing up on CRWD or reaching out to our support team can provide personalized assistance. Ready to get started or have more questions? We're here to help!",True

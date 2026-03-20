@@ -1,0 +1,6 @@
+boto3
+langgraph
+langchain-aws
+langchain-core
+pydantic
+pymongo
