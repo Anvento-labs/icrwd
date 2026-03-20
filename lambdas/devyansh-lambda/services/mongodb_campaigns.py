@@ -255,11 +255,48 @@ def get_campaign_rules(
         "optional_products": [],
         "vendor_specific_rules": {},
         "required_proof_types": [],
+        # Normalized gig_stores from crwds.gig_stores (if present)
+        # Each store: {store_id, store_name, normalized_store_name, products: [...]}
+        "gig_stores": [],
     }
     # required_proof_types: from campaign_rules extra, else derive from crwd.type_of_work_proof
     single_proof = crwd.get("type_of_work_proof")
     if single_proof and isinstance(single_proof, str):
         rules["required_proof_types"] = [single_proof.strip()]
+
+    # Normalize gig_stores from crwds.gig_stores so validation can use them
+    gig_stores = crwd.get("gig_stores") or []
+    if isinstance(gig_stores, list) and gig_stores:
+        norm_stores = []
+        for store in gig_stores:
+            if not isinstance(store, dict):
+                continue
+            store_name = store.get("store_name") or ""
+            products = store.get("products") or []
+            norm_store = {
+                "store_id": str(store.get("_id")) if store.get("_id") is not None else None,
+                "store_name": store_name,
+                "normalized_store_name": _normalize_name(store_name),
+                "products": [],
+            }
+            norm_products = []
+            for prod in products:
+                if not isinstance(prod, dict):
+                    continue
+                prod_name = prod.get("name") or ""
+                norm_products.append(
+                    {
+                        "product_id": str(prod.get("_id")) if prod.get("_id") is not None else None,
+                        "name": prod_name,
+                        "normalized_product_name": _normalize_name(prod_name),
+                        "product_url": prod.get("product_url"),
+                        "reimbursement_amount": prod.get("reimbursement_amount"),
+                        "description": prod.get("description") or "",
+                    }
+                )
+            norm_store["products"] = norm_products
+            norm_stores.append(norm_store)
+        rules["gig_stores"] = norm_stores
 
     if campaign_rules_collection:
         rules_coll = db[campaign_rules_collection]
@@ -533,6 +570,9 @@ def receipt_upload_history_insert(
     receipt_s3_key: Optional[str] = None,
     status: str,
     fail_reason: Optional[str] = None,
+    violation_details: Optional[List[str]] = None,
+    validation_results: Optional[List[Dict[str, Any]]] = None,
+    matched_store: Optional[Dict[str, Any]] = None,
     extracted_data: Optional[Dict[str, Any]] = None,
     receipt_type: str = "order_receipt",
     request_id: Optional[str] = None,
@@ -557,6 +597,9 @@ def receipt_upload_history_insert(
         "receipt_s3_key": receipt_s3_key,
         "status": status,
         "fail_reason": fail_reason,
+        "violation_details": violation_details,
+        "validation_results": validation_results,
+        "matched_store": matched_store,
         "extracted_data": extracted_data,
         "receipt_type": receipt_type,
         "created_at": now,

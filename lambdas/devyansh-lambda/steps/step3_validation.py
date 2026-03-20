@@ -54,6 +54,7 @@ def _validate_merchant(merchant_name: str, valid_merchants: List[str]) -> tuple[
 
 
 def _parse_purchase_date(purchase_date: Any) -> datetime | None:
+    """Parse receipt purchase date. US receipts: various formats (MM-DD-YY, MM/DD/YYYY, etc.)."""
     if purchase_date is None:
         return None
     if isinstance(purchase_date, datetime):
@@ -61,9 +62,39 @@ def _parse_purchase_date(purchase_date: Any) -> datetime | None:
     s = str(purchase_date).strip()
     if not s:
         return None
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"):
+    # US date formats: try 4-digit year first, then 2-digit year (YY = 2000-2068, 69-99 = 1969-1999)
+    # Order matters: try longer/more specific first
+    formats_4digit = [
+        "%Y-%m-%d",
+        "%m/%d/%Y",
+        "%m-%d-%Y",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y/%m/%d",
+    ]
+    formats_2digit = [
+        "%m-%d-%y",   # 11-30-25 -> Nov 30, 2025
+        "%m/%d/%y",
+        "%d-%m-%y",
+        "%d/%m/%y",
+    ]
+    # Try with first 10 chars for ISO and MM/DD/YYYY-style
+    for fmt in formats_4digit:
         try:
             return datetime.strptime(s[:10], fmt)
+        except ValueError:
+            continue
+    # 2-digit year: use up to 8 chars (MM-DD-YY) or 10 if longer
+    s_short = s[:10] if len(s) >= 10 else s
+    for fmt in formats_2digit:
+        try:
+            return datetime.strptime(s_short, fmt)
+        except ValueError:
+            continue
+    # Month name: "November 30, 2025" or "Nov 30, 2025"
+    for fmt in ("%B %d, %Y", "%b %d, %Y", "%B %d %Y", "%b %d %Y"):
+        try:
+            return datetime.strptime(s[:30].strip(), fmt)
         except ValueError:
             continue
     return None
@@ -215,7 +246,14 @@ def _fail(out: Dict[str, Any], audit_trail: List[Dict], review_reason: str, acti
     return out
 
 
-def _build_reply_message(final_decision: str, validation_status: str, review_reason: str, campaign_name: str, validation_score: float) -> str:
+def _build_reply_message(
+    final_decision: str,
+    validation_status: str,
+    review_reason: str,
+    campaign_name: str,
+    validation_score: float,
+    violations: List[str] | None = None,
+) -> str:
     """Build user-facing reply from validation result."""
     if final_decision == "APPROVED":
         parts = ["Receipt approved."]
@@ -227,13 +265,129 @@ def _build_reply_message(final_decision: str, validation_status: str, review_rea
     if final_decision == "REJECTED" and review_reason:
         return review_reason
     if validation_status == "pending_review" or final_decision == "PENDING_REVIEW":
-        parts = ["Receipt is under review."]
-        if review_reason:
-            parts.append(review_reason)
-        if campaign_name:
-            parts.append(f"Campaign: {campaign_name}.")
-        return " ".join(parts)
+        # User-friendly message only: what's missing, not technical score/count
+        if violations:
+            # Extract product names from "Required product 'X' not found on receipt"; dedupe by name
+            product_names = []
+            seen_names = set()
+            for v in (violations or []):
+                if not v:
+                    continue
+                if "Required product '" in v and "' not found" in v:
+                    start = v.find("'") + 1
+                    end = v.find("'", start)
+                    if end > start:
+                        name = v[start:end]
+                        if name and name not in seen_names:
+                            seen_names.add(name)
+                            product_names.append(name)
+                elif v not in seen_names:
+                    seen_names.add(v)
+                    product_names.append(v)
+            if product_names:
+                names_str = ", ".join(product_names[:5])
+                msg = f"Missing these products: {names_str}. Please upload the correct receipt."
+                if campaign_name:
+                    msg += f" Campaign: {campaign_name}."
+                return msg
+        return "Receipt is under review. Please upload the correct receipt." + (f" Campaign: {campaign_name}." if campaign_name else "")
     return review_reason or "Validation completed."
+
+
+def _normalize_product_name(name: str) -> str:
+    """Normalize product/store name for matching: lowercase, strip, collapse spaces."""
+    if not name:
+        return ""
+    return " ".join(str(name).lower().strip().split())
+
+
+def _select_store_for_merchant(
+    gig_stores: List[Dict[str, Any]],
+    merchant_name: str,
+    min_similarity: float = 0.7,
+) -> tuple[Dict[str, Any] | None, float]:
+    """
+    Pick a single gig_store from rules.gig_stores based on merchant_name.
+    Returns (store, similarity) or (None, 0.0) when no clear match.
+    """
+    if not gig_stores or not merchant_name:
+        return None, 0.0
+
+    merchant_norm = _normalize_product_name(merchant_name)
+    best_store: Dict[str, Any] | None = None
+    best_score = 0.0
+    second_best = 0.0
+
+    for store in gig_stores:
+        store_name = store.get("store_name") or ""
+        store_norm = store.get("normalized_store_name") or _normalize_product_name(store_name)
+        if not store_norm:
+            continue
+        score = SequenceMatcher(None, merchant_norm, store_norm).ratio()
+        if score > best_score:
+            second_best = best_score
+            best_score = score
+            best_store = store
+        elif score > second_best:
+            second_best = score
+
+    # Require a clear best match above threshold and not tied too closely with second best
+    if not best_store or best_score < min_similarity or (second_best and (best_score - second_best) < 0.05):
+        return None, best_score
+    return best_store, best_score
+
+
+def _validate_store_products(
+    line_items: List[Dict[str, Any]],
+    store_products: List[Dict[str, Any]],
+) -> tuple[bool, List[str], float, List[str]]:
+    """
+    Validate that all configured store_products are present in the receipt line_items.
+    Returns (ok, violations, score, matched_products_names).
+    Score is fraction of configured products that were matched.
+    """
+    # Build normalized list of line item names
+    normalized_items: List[tuple[str, str]] = []  # (raw_name, normalized)
+    for item in line_items or []:
+        raw = item.get("product_name") or item.get("description") or ""
+        norm = _normalize_product_name(raw)
+        if norm:
+            normalized_items.append((raw, norm))
+
+    violations: List[str] = []
+    matched_products: List[str] = []
+    if not store_products:
+        # No configured products: treat as pass
+        return True, violations, 1.0, matched_products
+
+    total = 0
+
+    for prod in store_products:
+        name = prod.get("name") or ""
+        norm_name = prod.get("normalized_product_name") or _normalize_product_name(name)
+        if not norm_name:
+            continue  # skip unnamed products
+        total += 1
+        found = False
+        for raw, norm in normalized_items:
+            if norm == norm_name:
+                found = True
+                matched_products.append(name or raw)
+                break
+            # Allow simple contains when product name is reasonably long
+            if len(norm_name) > 3 and norm_name in norm:
+                found = True
+                matched_products.append(name or raw)
+                break
+        if not found:
+            violations.append(f"Required product '{name}' not found on receipt")
+
+    if total == 0:
+        return True, violations, 1.0, matched_products
+    ok = not violations
+    matched_count = total - len(violations)
+    score = float(matched_count) / float(total)
+    return ok, violations, score, matched_products
 
 
 def _check_multiproof_pending(state: AIEngineState) -> Dict[str, Any] | None:
@@ -352,7 +506,8 @@ def run_validation(state: AIEngineState) -> AIEngineState:
     ok, err = _validate_date(purchase_date, date_range)
     if not ok:
         logger.info("run_validation | step=4 | date_out_of_range | purchase_date=%s | range=%s", purchase_date, date_range)
-        return _fail(out, audit_trail, "Receipt date is outside the campaign period", "receipt_date_outside_period")
+        # Preserve specific parse/range error in reply
+        return _fail(out, audit_trail, err or "Receipt date is outside the campaign period", "receipt_date_outside_period")
     logger.info("run_validation | step=4 | receipt_date_in_window | purchase_date=%s", purchase_date)
 
     # 5. Proof type
@@ -420,6 +575,7 @@ def run_validation(state: AIEngineState) -> AIEngineState:
     validation_results = []
     violations: List[str] = []
 
+    # Merchant validation (optional, based on campaign_rules.valid_merchants)
     valid_merchants = rules.get("valid_merchants", [])
     if valid_merchants:
         ok, err = _validate_merchant(merchant_name, valid_merchants)
@@ -439,16 +595,52 @@ def run_validation(state: AIEngineState) -> AIEngineState:
             "confidence": 1.0,
         })
 
-    required = rules.get("required_products", [])
-    optional = rules.get("optional_products", [])
-    ok, vios, score = _validate_products(line_items, required, optional)
-    validation_results.append({
-        "rule": "product_validation",
-        "passed": ok,
-        "message": "; ".join(vios) if not ok else "Products validated",
-        "confidence": score,
-    })
-    violations.extend(vios)
+    # Store + product validation using gig_stores when available and this is an order_receipt
+    gig_stores = rules.get("gig_stores") or []
+    matched_store = None
+    if gig_stores and state.get("detected_image_type") in (None, "order_receipt"):
+        matched_store, store_score = _select_store_for_merchant(gig_stores, merchant_name)
+        if not matched_store:
+            logger.info(
+                "run_validation | store_selection_failed | merchant_name=%s | best_score=%.3f",
+                merchant_name,
+                store_score,
+            )
+            return _fail(
+                out,
+                audit_trail,
+                "Could not match this receipt to a configured store for the campaign",
+                "store_not_matched",
+            )
+
+        out["matched_store_name"] = matched_store.get("store_name")
+        out["matched_store_id"] = matched_store.get("store_id")
+
+        ok_store, store_vios, store_score_products, matched_products = _validate_store_products(
+            line_items, matched_store.get("products") or []
+        )
+        if matched_products:
+            out["matched_products"] = matched_products
+
+        validation_results.append({
+            "rule": "store_product_validation",
+            "passed": ok_store,
+            "message": "; ".join(store_vios) if not ok_store else "Store products validated",
+            "confidence": store_score_products,
+        })
+        violations.extend(store_vios)
+    else:
+        # Fallback: legacy product validation using required_products/optional_products
+        required = rules.get("required_products", [])
+        optional = rules.get("optional_products", [])
+        ok, vios, score = _validate_products(line_items, required, optional)
+        validation_results.append({
+            "rule": "product_validation",
+            "passed": ok,
+            "message": "; ".join(vios) if not ok else "Products validated",
+            "confidence": score,
+        })
+        violations.extend(vios)
 
     vendor_rules = rules.get("vendor_specific_rules", {})
     ok, vios = _validate_vendor_rules(extracted_data, vendor_type, vendor_rules)
@@ -491,6 +683,9 @@ def run_validation(state: AIEngineState) -> AIEngineState:
         requires_manual_review,
         review_reason,
     )
+    if violations:
+        # High-signal debug log; avoid logging large payloads/PII
+        logger.info("run_validation | step=12 | violations=%s", violations[:10])
 
     if final_decision == "APPROVED":
         validation_status = "verified"
@@ -512,6 +707,7 @@ def run_validation(state: AIEngineState) -> AIEngineState:
         review_reason or "",
         crwd.get("name", ""),
         validation_score,
+        violations,
     )
     audit_trail.append({
         "step": "validation",

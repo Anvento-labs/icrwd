@@ -98,6 +98,15 @@ def node_update_mongo(state: AIEngineState) -> Dict[str, Any]:
                     "total_amount": state.get("total_amount"),
                     "extraction_confidence": state.get("extraction_confidence"),
                 }
+            violation_details = state.get("violation_details") or []
+            validation_results = state.get("validation_results") or []
+            matched_store = None
+            if state.get("matched_store_name") or state.get("matched_store_id"):
+                matched_store = {
+                    "store_id": state.get("matched_store_id"),
+                    "store_name": state.get("matched_store_name"),
+                    "matched_products": state.get("matched_products") or [],
+                }
             receipt_upload_history_insert(
                 MONGODB_URI,
                 MONGODB_RECEIPT_UPLOAD_HISTORY_DATABASE,
@@ -107,6 +116,9 @@ def node_update_mongo(state: AIEngineState) -> Dict[str, Any]:
                 receipt_s3_key=receipt_s3_key,
                 status=status,
                 fail_reason=fail_reason,
+                violation_details=violation_details,
+                validation_results=validation_results,
+                matched_store=matched_store,
                 extracted_data=extracted_data,
                 receipt_type="order_receipt",
             )
