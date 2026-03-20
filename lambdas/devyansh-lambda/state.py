@@ -60,6 +60,9 @@ class AIEngineState(TypedDict, total=False):
     # Node 3: Validation (campaign_id set from matched crwd; campaign_name for response)
     campaign_name: Optional[str]
     campaign_rules: Optional[Dict[str, Any]]
+    matched_store_name: Optional[str]
+    matched_store_id: Optional[str]
+    matched_products: List[str]
     validation_results: List[Dict[str, Any]]
     validation_status: Optional[str]
     validation_score: Optional[float]
